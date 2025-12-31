@@ -38,6 +38,7 @@ class SystemConfig(BaseModel):
     start_time: int
     execution: int
     join_story: float
+    transaction_waiting: int
 
 class KeyboardConfig(BaseModel):
     hold_time: float
@@ -373,6 +374,7 @@ def main(config: Settings):
     print("-" * 60)
     print("注意事項:")
     print("開啟腳本後GTA5必須保持前台模式")
+    print("偏好 -> 產生點 請設定比較明亮且不會洗澡的地方")
     print("-" * 60)
     print("操作說明:")
     print("請開啟GTA5並進入故事模式")
@@ -387,65 +389,70 @@ def main(config: Settings):
 
     print("\n>>> 開始執行腳本")
     
-    first_run = True
+    network_manager.restore_network()
 
     for i in range(config.system.execution):
         cycle_num = i + 1
         logger.info(f"{Colors.GREEN}=== Starting Cycle {cycle_num}/{config.system.execution} ==={Colors.RESET}")
 
-        transaction_pending = False
+        transaction_seen = False
+        transaction_end_time = 0
         is_network_blocked = False
+        is_returning_offline = False
+
         last_scene = None
+
+        keyboard_controller.to_online()
 
         while True:
             scene = scene_detection.detect_scene()
-
-            # first time
-            if i == 0 and first_run:
-                keyboard_controller.to_online()
-                first_run = False
-                time.sleep(2)
-                continue
 
             if scene and scene != last_scene:
                 logger.info(f"Scene Detected: {Colors.BLUE}{scene}{Colors.RESET}")
                 last_scene = scene
 
-            if scene == Scene.STORY_MODE:
-                keyboard_controller.to_online()
-                time.sleep(2)
-                continue
-
-            if scene == Scene.STORY_MODE:
-                logger.info(f"Joining Story Mode. Waiting {config.system.join_story}s before restoring network...")
-                time.sleep(config.system.join_story)
-                network_manager.restore_network()
-                last_scene = None
-                continue
-
             if scene == Scene.JOINING_ONLINE:
                 if not is_network_blocked:
                     network_manager.block_network()
                     is_network_blocked = True
-                
-                time.sleep(1)
+                time.sleep(0.5)
                 continue
 
             if scene == Scene.TRANSACTION:
-                if not transaction_pending:
+                if not transaction_seen:
                     logger.info("Transaction pending...")
-                    transaction_pending = True
+                    transaction_seen = True
+                transaction_end_time = 0 
                 continue
 
-            if (transaction_pending) and (scene != Scene.TRANSACTION):
-                logger.info("Transaction completed. Switching to Offline...")
-                keyboard_controller.to_offline()
-                break
+            if transaction_seen and scene != Scene.TRANSACTION and not is_returning_offline:
+                if transaction_end_time == 0:
+                    transaction_end_time = time.time()
+                    logger.info("Transaction disappeared. Waiting for confirmation...")
+                
+                elapsed = time.time() - transaction_end_time
+                if elapsed > config.system.transaction_waiting:
+                    logger.info(f"Confirmed transaction finished ({elapsed:.1f}s). Switching to Offline...")
+                    keyboard_controller.to_offline()
+                    is_returning_offline = True
 
-        logger.info(f"Cycle {cycle_num} completed.")
+                time.sleep(0.1) 
+                continue
+
+            if is_returning_offline and scene == Scene.STORY_MODE:
+                    logger.info("Returned to Story Mode.")
+                    logger.info(f"Cooling down for {config.system.join_story}s...")
+                    time.sleep(config.system.join_story)
+                    
+                    network_manager.restore_network()
+                    logger.info("Network restored. Cycle complete.")
+                    break
+
+            time.sleep(0.1)
+
+        logger.info(f"Cycle {cycle_num} logic finished.")
 
     logger.info("All execution cycles completed.")
-    # Ensure network is restored at the end
     network_manager.restore_network()
             
 if __name__ == "__main__":
