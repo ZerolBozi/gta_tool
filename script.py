@@ -391,66 +391,72 @@ def main(config: Settings):
     
     network_manager.restore_network()
 
-    for i in range(config.system.execution):
-        cycle_num = i + 1
-        logger.info(f"{Colors.GREEN}=== Starting Cycle {cycle_num}/{config.system.execution} ==={Colors.RESET}")
+    try:
+        for i in range(config.system.execution):
+            cycle_num = i + 1
+            logger.info(f"{Colors.GREEN}=== Starting Cycle {cycle_num}/{config.system.execution} ==={Colors.RESET}")
 
-        transaction_seen = False
-        transaction_end_time = 0
-        is_network_blocked = False
-        is_returning_offline = False
+            transaction_seen = False
+            transaction_end_time = 0
+            is_network_blocked = False
+            is_returning_offline = False
 
-        last_scene = None
+            last_scene = None
 
-        keyboard_controller.to_online()
+            keyboard_controller.to_online()
 
-        while True:
-            scene = scene_detection.detect_scene()
+            while True:
+                scene = scene_detection.detect_scene()
 
-            if scene and scene != last_scene:
-                logger.info(f"Scene Detected: {Colors.BLUE}{scene}{Colors.RESET}")
-                last_scene = scene
+                if scene and scene != last_scene:
+                    logger.info(f"Scene Detected: {Colors.BLUE}{scene}{Colors.RESET}")
+                    last_scene = scene
 
-            if scene == Scene.JOINING_ONLINE:
-                if not is_network_blocked:
-                    network_manager.block_network()
-                    is_network_blocked = True
-                time.sleep(0.5)
-                continue
+                if scene == Scene.JOINING_ONLINE:
+                    if not is_network_blocked:
+                        network_manager.block_network()
+                        is_network_blocked = True
+                    time.sleep(0.5)
+                    continue
 
-            if scene == Scene.TRANSACTION:
-                if not transaction_seen:
-                    logger.info("Transaction pending...")
-                    transaction_seen = True
-                transaction_end_time = 0 
-                continue
+                if scene == Scene.TRANSACTION:
+                    if not transaction_seen:
+                        logger.info("Transaction pending...")
+                        transaction_seen = True
+                    transaction_end_time = 0 
+                    continue
 
-            if transaction_seen and scene != Scene.TRANSACTION and not is_returning_offline:
-                if transaction_end_time == 0:
-                    transaction_end_time = time.time()
-                    logger.info("Transaction disappeared. Waiting for confirmation...")
-                
-                elapsed = time.time() - transaction_end_time
-                if elapsed > config.system.transaction_waiting:
-                    logger.info(f"Confirmed transaction finished ({elapsed:.1f}s). Switching to Offline...")
-                    keyboard_controller.to_offline()
-                    is_returning_offline = True
-
-                time.sleep(0.1) 
-                continue
-
-            if is_returning_offline and scene == Scene.STORY_MODE:
-                    logger.info("Returned to Story Mode.")
-                    logger.info(f"Cooling down for {config.system.join_story}s...")
-                    time.sleep(config.system.join_story)
+                if transaction_seen and scene != Scene.TRANSACTION and not is_returning_offline:
+                    if transaction_end_time == 0:
+                        transaction_end_time = time.time()
+                        logger.info("Transaction disappeared. Waiting for confirmation...")
                     
-                    network_manager.restore_network()
-                    logger.info("Network restored. Cycle complete.")
-                    break
+                    elapsed = time.time() - transaction_end_time
+                    if elapsed > config.system.transaction_waiting:
+                        logger.info(f"Confirmed transaction finished ({elapsed:.1f}s). Switching to Offline...")
+                        keyboard_controller.to_offline()
+                        is_returning_offline = True
 
-            time.sleep(0.1)
+                    time.sleep(0.1) 
+                    continue
 
-        logger.info(f"Cycle {cycle_num} logic finished.")
+                if is_returning_offline and scene == Scene.STORY_MODE:
+                        logger.info("Returned to Story Mode.")
+                        logger.info(f"Cooling down for {config.system.join_story}s...")
+                        time.sleep(config.system.join_story)
+                        
+                        network_manager.restore_network()
+                        logger.info("Network restored. Cycle complete.")
+                        break
+
+                time.sleep(0.1)
+
+            logger.info(f"Cycle {cycle_num} logic finished.")
+            
+    except KeyboardInterrupt:
+        logger.info("Script interrupted by user.")
+        network_manager.restore_network()
+        return
 
     logger.info("All execution cycles completed.")
     network_manager.restore_network()
