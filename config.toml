@@ -1,7 +1,7 @@
 [system]
 start_time = 5
-execution = 3
-join_story = 7
+execution = 100
+join_story = 6.5
 transaction_waiting = 5
 
 [keyboard]
