@@ -7,7 +7,6 @@ import ctypes
 import logging
 import subprocess
 from typing import Optional, Any
-from dataclasses import dataclass
 
 import mss
 import cv2
@@ -47,13 +46,6 @@ class KeyboardConfig(BaseModel):
 class Settings(BaseModel):
     system: SystemConfig
     keyboard: KeyboardConfig
-
-@dataclass
-class Rect:
-    left: int
-    top: int
-    width: int
-    height: int
 
 class AreaType:
     BOTTOM_RIGHT = "bottom_right"
@@ -237,12 +229,12 @@ class SceneDetection:
         
         logger.info(f"Successfully loaded {count} templates.")
         
-    def _get_win_rect(self, window_title: str) -> Optional[Rect]:
+    def _get_win_rect(self, window_title: str) -> Optional[dict]:
         try:
             hwnd = win32gui.FindWindow(None, window_title)
             if hwnd:
                 rect = win32gui.GetWindowRect(hwnd)
-                win_rect = Rect(rect[0], rect[1], rect[2] - rect[0], rect[3])
+                win_rect = {"left": rect[0], "top": rect[1], "width": rect[2] - rect[0], "height": rect[3] - rect[1]}
                 return win_rect
         
         except Exception as e:
@@ -250,17 +242,17 @@ class SceneDetection:
             
         return None
     
-    def _get_capture_region(self, win_rect: Rect, area_type: AreaType) -> Rect:
-        region = Rect(win_rect.left, win_rect.top, win_rect.width, win_rect.height)
+    def _get_capture_region(self, win_rect: dict, area_type: AreaType) -> dict:
+        region = win_rect.copy()
 
         if area_type == AreaType.BOTTOM_RIGHT:
-            region.left = int(win_rect.left + win_rect.width * 0.6)
-            region.top = int(win_rect.top + win_rect.height * 0.7)
-            region.width = int(win_rect.width * 0.4)
-            region.height = int(win_rect.height * 0.3)
+            region["left"] = int(win_rect["left"] + win_rect["width"] * 0.6)
+            region["top"] = int(win_rect["top"] + win_rect["height"] * 0.7)
+            region["width"] = int(win_rect["width"] * 0.4)
+            region["height"] = int(win_rect["height"] * 0.3)
 
-        if region.left < 0: region.left = 0
-        if region.top < 0: region.top = 0
+        if region["left"] < 0: region["left"] = 0
+        if region["top"] < 0: region["top"] = 0
 
         return region
     
@@ -277,15 +269,8 @@ class SceneDetection:
 
             capture_region = self._get_capture_region(win_rect, config['area'])
 
-            monitor = {
-                "left": capture_region.left,
-                "top": capture_region.top,
-                "width": capture_region.width,
-                "height": capture_region.height
-            }
-
             try:
-                scr = self.sct.grab(monitor)
+                scr = self.sct.grab(capture_region)
                 img = np.array(scr)
                 img = img[:, :, :3]
 
